@@ -29,7 +29,8 @@
     "megajs": "^1.1.1",
     "ytdl-core": "^4.11.5",
     "yt-search": "^2.10.4",
-    "fluent-ffmpeg": "^2.1.2"
+    "fluent-ffmpeg": "^2.1.2",
+    "api-dylux": "latest"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
