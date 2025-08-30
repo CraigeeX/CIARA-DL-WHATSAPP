@@ -1,224 +1,111 @@
-// config.js - CIARA-IV MINI Configuration
-// Created by CraigeeX - Updated with GiftedTech APIs
-
+// config.js - CIARA-IV MINI Configuration by CraigeeX
 module.exports = {
-    // ===========================================
-    // 🤖 BOT CONFIGURATION
-    // ===========================================
-
-    // MEGA Session ID (format: CIARA-IV~xxxxxxxxx)
-    // Leave empty for first run to generate QR code
-    sessionId: process.env.SESSION_ID || 'CIARA-IV~your_mega_session_id_here',
-
-    // Owner WhatsApp Number (with country code, no + or spaces)
-    // Example: 27847826044 for +27 84 782 6044
-    ownerNumber: process.env.OWNER_NUMBER || '27847826044@s.whatsapp.net',
-
-    // ===========================================
-    // 🔗 API ENDPOINTS (GiftedTech)
-    // ===========================================
-
-    apis: {
-        // Base API URL
-        baseUrl: 'https://api.giftedtech.web.id/api',
-        
-        // API Key (hardcoded as requested)
-        apiKey: 'gifted',
-        
-        // Download endpoints
-        ytmp3: 'https://api.giftedtech.web.id/api/download/ytmp3',
-        ytmp4: 'https://api.giftedtech.web.id/api/download/ytmp4',
-        apkdl: 'https://api.giftedtech.web.id/api/download/apkdl',
-        
-        // AI endpoint
-        gpt: 'https://api.giftedtech.web.id/api/ai/gpt4o-mini'
-    },
-
-    // ===========================================
-    // ⚙️ BOT SETTINGS
-    // ===========================================
-
-    // Command prefix (change if you want different prefix)
+    // Bot Basic Settings
     prefix: '.',
-
-    // Response delay in milliseconds (prevents spam detection)
-    responseDelay: 1000,
-
-    // Rate limiting (messages per minute per user)
-    rateLimitMax: 20,
-    rateLimitWindow: 60, // in seconds
-
-    // Session cache TTL (Time To Live) in seconds
-    sessionCacheTTL: 3600, // 1 hour
-
-    // ===========================================
-    // 🎵 DOWNLOAD SETTINGS
-    // ===========================================
-
-    downloads: {
-        // Maximum file size (in bytes) - 50MB
-        maxFileSize: 50 * 1024 * 1024,
-
-        // Download timeout
-        timeout: 120000, // 2 minutes
-
-        // Audio format for downloads
-        audioFormat: 'mp3',
-
-        // Video format for downloads
-        videoFormat: 'mp4'
-    },
-
-    // ===========================================
-    // 🤖 AI CONFIGURATION
-    // ===========================================
-
-    ai: {
-        // AI model (GPT-4o-mini via GiftedTech)
-        model: 'gpt-4o-mini',
-
-        // AI response timeout
-        timeout: 30000, // 30 seconds
-
-        // Custom system prompt for AI
-        systemPrompt: `You are CIARA-IV MINI, an advanced AI assistant created by CraigeeX.
-        
-Key Information:
-- Creator: CraigeeX (19 years old, self-taught developer from Zimbabwe)
-- Your purpose: Help users with questions, be friendly and informative
-- Always include relevant emojis in responses
-- Keep responses concise but helpful
-- If asked about your creator, mention CraigeeX with pride
-
-Personality:
-- Friendly and approachable
-- Knowledgeable but not overwhelming  
-- Use emojis appropriately
-- Be concise but thorough when needed`
-    },
-
-    // ===========================================
-    // 📧 CONTACT INFORMATION
-    // ===========================================
-
+    botName: 'CIARA-IV MINI',
+    version: '2.0.0',
+    
+    // Owner Information
+    ownerNumber: '254xxxxxxxxx@s.whatsapp.net', // Replace with your number
+    
+    // Contact Information
     contact: {
-        email: 'ciara.info.inc@gmail.com',
-        whatsapp: '+27847826044',
-        github: 'CraigeeX',
         name: 'CraigeeX',
-        location: 'Zimbabwe'
+        whatsapp: '+254xxxxxxxxx', // Replace with your number
+        email: 'craigee@example.com', // Replace with your email
+        github: 'CraigeeX', // Replace with your GitHub username
+        location: 'Kenya'
     },
-
-    // ===========================================
-    // 🎨 BOT RESPONSES (Customizable Messages)
-    // ===========================================
-
-    messages: {
-        // Welcome/greeting messages
-        welcome: '🤖 Hi! I\'m CIARA-IV MINI, created by CraigeeX! How can I help you today?',
-
-        // Error messages
-        apiError: '❌ Sorry, I\'m having trouble with my AI brain right now. Please try again!',
-        downloadError: '❌ Oops! Couldn\'t download that for you. Please try a different search term.',
-        rateLimitError: '⏰ Whoa there! You\'re sending messages too fast. Please slow down a bit!',
-        blockedUser: '🚫 You have been blocked from using this bot.',
-        ownerOnly: '❌ This command is only available to my creator!',
-        noPermission: '❌ You don\'t have permission to use this command.',
-
-        // Success messages  
-        downloadSuccess: '✅ Here\'s your download! Enjoy! 🎵',
-        careSubmitted: '🆘 Your support request has been forwarded to {name}! Request ID: #{id}',
-        userBlocked: '🚫 User has been blocked successfully!',
-        userUnblocked: '✅ User has been unblocked successfully!',
-
-        // Info messages
-        botInfo: `🤖 *CIARA-IV MINI*
-        
-✨ Advanced WhatsApp AI Bot
-🧠 Powered by GPT-4o-mini AI  
-🎵 Song & Video Downloads
-📱 APK Downloads
-🆘 Customer Support System
-📧 ciara.info.inc@gmail.com
-
-🛠️ Created by CraigeeX - A 19-year-old self-taught developer from Zimbabwe! 🇿🇼`,
-
-        creatorInfo: `👨‍💻 *CraigeeX - Bot Creator*
-
-🎯 19 years old self-taught developer
-🌍 Based in Zimbabwe, Africa  
-💻 Specializes in AI bots & web development
-📱 WhatsApp: +27847826044
-💌 Email: ciara.info.inc@gmail.com
-🔗 GitHub: CraigeeX
-
-🚀 Building the future of AI communication!`
+    
+    // Session Management
+    sessionId: 'CIARA-IV~your_mega_session_id_here', // Replace with your MEGA session ID
+    
+    // API Configuration
+    apis: {
+        apiKey: 'your_api_key_here', // Your GiftedTech API key if using GPT
+        gpt: 'https://api.giftedtech.my.id/api/gpt4', // GPT API endpoint (optional)
     },
-
-    // ===========================================
-    // 🖼️ MEDIA SETTINGS
-    // ===========================================
-
+    
+    // AI Configuration
+    ai: {
+        model: 'GPT-4o-mini',
+        systemPrompt: 'You are CIARA-IV MINI, a helpful WhatsApp bot created by CraigeeX. Be friendly, helpful, and use appropriate emojis in your responses.',
+        timeout: 30000
+    },
+    
+    // Rate Limiting
+    rateLimitWindow: 60, // seconds
+    rateLimitMax: 10, // max commands per window
+    responseDelay: 1000, // ms delay before responding
+    
+    // Download Settings
+    downloads: {
+        timeout: 60000, // 60 seconds timeout for downloads
+        audioQuality: 'highestaudio',
+        videoQuality: 'highest'
+    },
+    
+    // Media Settings
     media: {
-        // Menu image URL
-        menuImage: 'https://files.catbox.moe/0bn6cs.jpg',
-
-        // Bot profile settings
-        botName: 'CIARA-IV MINI',
-        botStatus: 'AI Assistant by CraigeeX',
-
-        // Auto presence settings
-        autoRead: true,           // Auto read messages
-        autoOnline: true,         // Always show online
-        autoRecording: true,      // Show recording when responding
-        presenceUpdateInterval: 30000 // Update presence every 30 seconds
+        autoOnline: true,
+        autoRecording: false,
+        presenceUpdateInterval: 60000, // 1 minute
+        menuImage: 'https://i.imgur.com/placeholder.jpg' // Replace with your menu image URL
     },
-
-    // ===========================================
-    // 🔧 ADVANCED SETTINGS
-    // ===========================================
-
+    
+    // Advanced Features
     advanced: {
-        // Enable/disable features
         enableAI: true,
-        enableDownloads: true, 
-        enableCustomerCare: true,
-        enableOwnerCommands: true,
+        enableDownloads: true,
         enableAPKDownloads: true,
-
-        // Logging settings
-        logLevel: 'info', // 'silent', 'error', 'warn', 'info', 'debug'
-        logToFile: false,
-
-        // Performance settings
-        maxConcurrentDownloads: 3,
-        downloadTimeout: 120000, // 2 minutes
-        aiResponseTimeout: 30000, // 30 seconds
-
-        // Security settings
+        enableCustomerCare: true,
         enableRateLimiting: true,
         enableBlacklist: true,
-        enableWhitelist: false,
-
-        // Auto-features
-        autoRestart: true,
-        autoUpdate: false,
-        autoBackup: true
+        logLevel: 'info' // 'debug', 'info', 'warn', 'error'
     },
-
-    // ===========================================
-    // 🌐 SERVER CONFIGURATION  
-    // ===========================================
-
+    
+    // Server Settings
     server: {
-        // Port for health check server
-        port: process.env.PORT || 3000,
+        port: process.env.PORT || 3000
+    },
+    
+    // Bot Messages
+    messages: {
+        // Error Messages
+        apiError: '❌ AI service is temporarily unavailable. Please try again later.',
+        downloadError: '❌ Download failed. Please try again with a different search term.',
+        rateLimitError: '⚠️ You are sending commands too quickly. Please wait a moment before trying again.',
+        
+        // Permission Messages
+        ownerOnly: '❌ This command is only available to the bot owner.',
+        
+        // User Management
+        userBlocked: '🚫 User has been blocked successfully.',
+        userUnblocked: '✅ User has been unblocked successfully.',
+        
+        // Customer Care
+        careSubmitted: '🆘 Your support request has been submitted to {name}.\n\nRequest ID: #{id}\n\nYou will receive a response soon!',
+        
+        // Bot Information
+        botInfo: `🤖 *CIARA-IV MINI WhatsApp Bot*
 
-        // Health check settings
-        healthCheck: {
-            enabled: true,
-            endpoint: '/',
-            interval: 30000
-        }
+🛠️ *Creator:* CraigeeX
+📧 *Support:* craigee@example.com
+🌐 *GitHub:* github.com/CraigeeX
+📱 *Version:* 2.0.0
+
+✨ *Features:*
+• AI Chat Assistant
+• YouTube Song & Video Downloads
+• APK Downloads
+• Customer Support System
+• Owner Management Tools
+
+🔧 *Powered by:*
+• Baileys WhatsApp Library
+• api-dylux for Downloads
+• MEGA for Session Storage
+
+> A powerful yet lightweight WhatsApp bot designed for efficiency and user experience.`
     }
 };
