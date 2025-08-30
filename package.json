@@ -1,0 +1,46 @@
+{
+  "name": "ciara-iv-mini-whatsapp-bot",
+  "version": "1.0.0",
+  "description": "CIARA-IV MINI WhatsApp Bot with AI Chat, Song/Video Download by CraigeeX",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "keywords": [
+    "whatsapp",
+    "bot",
+    "ai",
+    "gemini",
+    "youtube",
+    "download",
+    "ciara"
+  ],
+  "author": "CraigeeX",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.4.0",
+    "pino": "^8.15.0",
+    "axios": "^1.5.0",
+    "node-cache": "^5.1.2",
+    "megajs": "^1.1.1",
+    "ytdl-core": "^4.11.5",
+    "yt-search": "^2.10.4",
+    "fluent-ffmpeg": "^2.1.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CraigeeX/ciara-iv-mini"
+  },
+  "bugs": {
+    "url": "https://github.com/CraigeeX/ciara-iv-mini/issues",
+    "email": "ciara.info.inc@gmail.com"
+  },
+  "homepage": "https://github.com/CraigeeX/ciara-iv-mini#readme"
+}
