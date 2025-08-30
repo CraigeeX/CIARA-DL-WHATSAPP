@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: ciara-iv-mini-bot
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_ID
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: OWNER_NUMBER
+        value: "27847826044"
+      - key: PORT
+        value: "3000"
+    healthCheckPath: /
+    disk:
+      name: ciara-data
+      mountPath: /opt/render/project/src/sessions
+      sizeGB: 1
