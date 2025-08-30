@@ -1,12 +1,13 @@
 // index.js - CIARA-IV MINI WhatsApp Bot by CraigeeX
-// Updated with GiftedTech APIs
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, Browsers } = require('@whiskeysockets/baileys');
+// Updated with api-dylux and hidden commands
+const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, Browsers, downloadContentFromMessage } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const axios = require('axios');
 const NodeCache = require('node-cache');
 const fs = require('fs');
 const path = require('path');
 const { File } = require('megajs');
+const fg = require('api-dylux');
 const yts = require('yt-search');
 const config = require('./config');
 
@@ -14,7 +15,6 @@ const config = require('./config');
 const rateLimiter = new NodeCache({ stdTTL: config.rateLimitWindow });
 const blockedUsers = new NodeCache({ stdTTL: 0 }); // Permanent until restart
 const customerCareRequests = new NodeCache({ stdTTL: 0 });
-const pendingDownloads = new NodeCache({ stdTTL: 300 }); // 5 minutes
 
 // Logger
 const logger = pino({ level: config.advanced.logLevel });
@@ -102,35 +102,38 @@ async function loadSession() {
     }
 }
 
-// GiftedTech AI integration (GPT-4o-mini)
-const getGPTResponse = async (question, userName) => {
+// AI integration
+const getAIResponse = async (question, userName) => {
     if (!config.advanced.enableAI) {
         return `🤖 AI features are currently disabled.`;
     }
 
     try {
-        const response = await axios.get(config.apis.gpt, {
-            params: {
-                apikey: config.apis.apiKey,
-                q: `${config.ai.systemPrompt}\n\nUser ${userName} asks: ${question}`
-            },
-            timeout: config.ai.timeout
-        });
+        // Try your existing GPT API first
+        if (config.apis && config.apis.gpt && config.apis.apiKey) {
+            const response = await axios.get(config.apis.gpt, {
+                params: {
+                    apikey: config.apis.apiKey,
+                    q: `${config.ai.systemPrompt}\n\nUser ${userName} asks: ${question}`
+                },
+                timeout: config.ai.timeout
+            });
 
-        if (response.data && response.data.result) {
-            return response.data.result;
-        } else if (response.data && response.data.answer) {
-            return response.data.answer;
-        } else {
-            throw new Error('Invalid API response');
+            if (response.data && (response.data.result || response.data.answer)) {
+                return response.data.result || response.data.answer;
+            }
         }
+
+        // Fallback to a simple response if no API is configured
+        return `🤖 Hello ${userName}! I'm CIARA-IV MINI. I'd love to help answer your questions, but I need my AI API to be properly configured. Please contact my creator ${config.contact.name} for assistance.`;
+        
     } catch (error) {
-        logger.error('GPT API Error:', error.message);
-        return config.messages.apiError;
+        logger.error('AI API Error:', error.message);
+        return config.messages.apiError || `❌ AI service is temporarily unavailable. Please try again later.`;
     }
 };
 
-// YouTube search function (for getting video info)
+// YouTube search function
 const searchYouTube = async (query) => {
     try {
         const results = await yts(query);
@@ -141,62 +144,183 @@ const searchYouTube = async (query) => {
     }
 };
 
-// GiftedTech download functions
-const downloadFromGiftedTech = async (videoUrl, type = 'audio') => {
+// Download using api-dylux
+const downloadSong = async (url) => {
     try {
-        const apiUrl = type === 'audio' ? config.apis.ytmp3 : config.apis.ytmp4;
-        
-        const response = await axios.get(apiUrl, {
-            params: {
-                apikey: config.apis.apiKey,
-                url: videoUrl
-            },
-            timeout: config.downloads.timeout
-        });
-
-        if (response.data && response.data.result) {
-            return {
-                success: true,
-                title: response.data.result.title || 'Unknown',
-                downloadUrl: response.data.result.download_url || response.data.result.url,
-                thumbnail: response.data.result.thumbnail || response.data.result.thumb,
-                duration: response.data.result.duration || 'Unknown'
-            };
-        } else {
-            throw new Error('Invalid API response');
-        }
+        const result = await fg.yta(url);
+        return {
+            success: true,
+            title: result.title || 'Unknown',
+            downloadUrl: result.dl_url,
+            duration: result.duration || 'Unknown'
+        };
     } catch (error) {
-        logger.error(`GiftedTech ${type} download error:`, error.message);
+        logger.error('Song download error:', error.message);
         throw error;
     }
 };
 
-// APK download function
+const downloadVideo = async (url) => {
+    try {
+        const result = await fg.ytv(url);
+        return {
+            success: true,
+            title: result.title || 'Unknown',
+            downloadUrl: result.dl_url,
+            duration: result.duration || 'Unknown'
+        };
+    } catch (error) {
+        logger.error('Video download error:', error.message);
+        throw error;
+    }
+};
+
+// APK download function using davidcyriltech API
 const downloadAPK = async (appName) => {
     try {
-        const response = await axios.get(config.apis.apkdl, {
+        const response = await axios.get(`https://apis.davidcyriltech.my.id/download/apk`, {
             params: {
-                apikey: config.apis.apiKey,
-                appName: appName
+                text: appName
             },
-            timeout: config.downloads.timeout
+            timeout: config.downloads.timeout || 30000
         });
 
-        if (response.data && response.data.result) {
+        if (response.data && response.data.success && response.data.download_link) {
             return {
                 success: true,
-                name: response.data.result.name || appName,
-                version: response.data.result.version || 'Unknown',
-                size: response.data.result.size || 'Unknown',
-                downloadUrl: response.data.result.download_url || response.data.result.url,
-                icon: response.data.result.icon || response.data.result.thumbnail
+                name: response.data.apk_name || appName,
+                downloadUrl: response.data.download_link,
+                size: response.data.size || 'Unknown'
             };
         } else {
-            throw new Error('Invalid API response');
+            throw new Error('App not found or API error');
         }
     } catch (error) {
         logger.error('APK download error:', error.message);
         throw error;
+    }
+};
+
+// View-once media handler
+const handleViewOnceMedia = async (sock, messageInfo, chatId, userJid) => {
+    if (!isOwner(userJid)) {
+        return false; // Only owner can use this command
+    }
+
+    const quoted = messageInfo.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+    const quotedImage = quoted?.imageMessage;
+    const quotedVideo = quoted?.videoMessage;
+
+    try {
+        if (quotedImage && quotedImage.viewOnce) {
+            const stream = await downloadContentFromMessage(quotedImage, 'image');
+            let buffer = Buffer.from([]);
+            for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+
+            // Send to owner
+            await sock.sendMessage(config.ownerNumber, {
+                image: buffer,
+                caption: `🔓 *View-Once Image Extracted*\n\n📝 Original Caption: ${quotedImage.caption || 'No caption'}\n👤 From: ${getUserName(messageInfo.pushName, messageInfo.key.remoteJid)}\n📱 Chat: ${chatId}\n\n✨ Extracted by CIARA-IV MINI`
+            });
+
+            return true;
+        } else if (quotedVideo && quotedVideo.viewOnce) {
+            const stream = await downloadContentFromMessage(quotedVideo, 'video');
+            let buffer = Buffer.from([]);
+            for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
+
+            // Send to owner
+            await sock.sendMessage(config.ownerNumber, {
+                video: buffer,
+                caption: `🔓 *View-Once Video Extracted*\n\n📝 Original Caption: ${quotedVideo.caption || 'No caption'}\n👤 From: ${getUserName(messageInfo.pushName, messageInfo.key.remoteJid)}\n📱 Chat: ${chatId}\n\n✨ Extracted by CIARA-IV MINI`
+            });
+
+            return true;
+        } else {
+            await sock.sendMessage(chatId, {
+                text: `❌ Please reply to a view-once image or video to extract it.`
+            });
+            return true;
+        }
+    } catch (error) {
+        logger.error('View-once extraction error:', error);
+        await sock.sendMessage(chatId, {
+            text: `❌ Failed to extract view-once media: ${error.message}`
+        });
+        return true;
+    }
+};
+
+// Online users checker
+const checkOnlineUsers = async (sock, chatId, userJid) => {
+    if (!isOwner(userJid)) {
+        return false; // Only owner can use this command
+    }
+
+    if (!chatId.endsWith('@g.us')) {
+        await sock.sendMessage(chatId, {
+            text: `❌ This command only works in group chats.`
+        });
+        return true;
+    }
+
+    try {
+        // Get group metadata
+        const groupMetadata = await sock.groupMetadata(chatId);
+        const participants = groupMetadata.participants;
+
+        // Check presence for each participant
+        const onlineUsers = [];
+        const totalParticipants = participants.length;
+
+        for (const participant of participants) {
+            try {
+                // Subscribe to presence updates
+                await sock.presenceSubscribe(participant.id);
+                
+                // Get current presence
+                const presenceData = await sock.chatRead(participant.id);
+                
+                // Add to online list (basic implementation)
+                onlineUsers.push({
+                    jid: participant.id,
+                    name: participant.notify || participant.id.split('@')[0]
+                });
+            } catch (error) {
+                // User offline or privacy restricted
+            }
+        }
+
+        let responseText = `👥 *Online Status for ${groupMetadata.subject}*\n\n`;
+        
+        if (onlineUsers.length > 0) {
+            responseText += `🟢 *Recently Active Users (${onlineUsers.length}):*\n`;
+            onlineUsers.slice(0, 20).forEach((user, index) => {
+                const number = user.jid.split('@')[0];
+                responseText += `${index + 1}. ${user.name} (wa.me/${number})\n`;
+            });
+            
+            if (onlineUsers.length > 20) {
+                responseText += `\n... and ${onlineUsers.length - 20} more users`;
+            }
+        } else {
+            responseText += `🟢 *Online Users:* None detected`;
+        }
+
+        responseText += `\n\n📊 *Total Participants:* ${totalParticipants}`;
+        responseText += `\n⚠️ *Note:* Due to WhatsApp privacy updates, online status detection is limited.`;
+
+        await sock.sendMessage(config.ownerNumber, {
+            text: responseText
+        });
+
+        return true;
+    } catch (error) {
+        logger.error('Online check error:', error);
+        await sock.sendMessage(chatId, {
+            text: `❌ Failed to check online users: ${error.message}`
+        });
+        return true;
     }
 };
 
@@ -221,112 +345,6 @@ const notifyOwner = async (sock, message) => {
     } catch (error) {
         logger.error('Failed to notify owner:', error.message);
     }
-};
-
-// Handle text replies for downloads
-const handleTextReply = async (sock, messageInfo, messageContent, chatId, userJid, userName) => {
-    const replyKey = `reply_${chatId}_${userJid}`;
-    const pendingData = pendingDownloads.get(replyKey);
-    
-    if (!pendingData) return false;
-    
-    const choice = messageContent.trim();
-    if (choice !== '1' && choice !== '2') {
-        return false; // Not a valid choice
-    }
-
-    try {
-        // React to choice
-        await sock.sendMessage(chatId, {
-            react: {
-                text: "⬇️",
-                key: messageInfo.key
-            }
-        });
-
-        const isDocument = choice === '2';
-        const downloadType = pendingData.type === 'song' ? 'audio' : 'video';
-        
-        // Send downloading message
-        await sock.sendMessage(chatId, {
-            text: `⬇️ Downloading *${pendingData.title}*...\n\nPlease wait, this may take a moment...`
-        });
-
-        // Download from GiftedTech API
-        const result = await downloadFromGiftedTech(pendingData.url, downloadType);
-        
-        if (!result.success || !result.downloadUrl) {
-            throw new Error('Download failed');
-        }
-
-        // Download the actual file
-        const fileResponse = await axios.get(result.downloadUrl, {
-            responseType: 'stream',
-            timeout: config.downloads.timeout
-        });
-
-        const fileName = `${result.title.replace(/[^\w\s]/gi, '')}.${downloadType === 'audio' ? 'mp3' : 'mp4'}`;
-
-        if (pendingData.type === 'song') {
-            if (isDocument) {
-                await sock.sendMessage(chatId, {
-                    document: fileResponse.data,
-                    mimetype: 'audio/mpeg',
-                    fileName: fileName,
-                    caption: `🎵 *${result.title}*\n⏰ Duration: ${result.duration}\n\n✨ Downloaded by CIARA-IV MINI`
-                });
-            } else {
-                await sock.sendMessage(chatId, {
-                    audio: fileResponse.data,
-                    mimetype: 'audio/mp4',
-                    ptt: false,
-                    caption: `🎵 *${result.title}*`
-                });
-            }
-        } else {
-            if (isDocument) {
-                await sock.sendMessage(chatId, {
-                    document: fileResponse.data,
-                    mimetype: 'video/mp4',
-                    fileName: fileName,
-                    caption: `📹 *${result.title}*\n⏰ Duration: ${result.duration}\n\n✨ Downloaded by CIARA-IV MINI`
-                });
-            } else {
-                await sock.sendMessage(chatId, {
-                    video: fileResponse.data,
-                    mimetype: 'video/mp4',
-                    caption: `📹 *${result.title}*`
-                });
-            }
-        }
-
-        // Success reaction
-        await sock.sendMessage(chatId, {
-            react: {
-                text: "✅",
-                key: messageInfo.key
-            }
-        });
-
-        // Clean up
-        pendingDownloads.del(replyKey);
-
-    } catch (error) {
-        logger.error('Download error:', error);
-        await sock.sendMessage(chatId, {
-            text: `❌ Download failed: ${error.message}\n\nPlease try again with a different search term.`
-        });
-        
-        // Error reaction
-        await sock.sendMessage(chatId, {
-            react: {
-                text: "❌",
-                key: messageInfo.key
-            }
-        });
-    }
-    
-    return true;
 };
 
 // Command handlers
@@ -435,43 +453,59 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
             });
 
             try {
-                const video = await searchYouTube(songQuery);
-                if (!video) {
+                const search = await yts(songQuery);
+                const data = search.videos[0];
+                
+                if (!data) {
                     await sock.sendMessage(chatId, { 
                         text: `❌ Sorry, couldn't find the song: *${songQuery}*` 
                     });
                     return true;
                 }
 
-                // Store pending download data
-                const replyKey = `reply_${chatId}_${userJid}`;
-                pendingDownloads.set(replyKey, {
-                    url: video.url,
-                    title: video.title,
-                    type: 'song'
+                const url = data.url;
+
+                let desc = `🎶 *CIARA-IV MINI SONG DOWNLOADER* 🎶
+
+Title: ${data.title}
+Description: ${data.description}
+Duration: ${data.timestamp}
+Uploaded: ${data.ago}
+Views: ${data.views}
+
+> Created by ${config.contact.name}`;
+
+                // Send thumbnail with info
+                await sock.sendMessage(chatId, {
+                    image: { url: data.thumbnail },
+                    caption: desc
+                }, { quoted: messageInfo });
+
+                // Download audio using api-dylux
+                await sock.sendMessage(chatId, { 
+                    text: `⬇️ Downloading audio...` 
                 });
 
-                // Send thumbnail with options
-                try {
-                    const thumbnailResponse = await axios.get(video.thumbnail, { 
-                        responseType: 'arraybuffer',
-                        timeout: 10000 
-                    });
-                    
-                    await sock.sendMessage(chatId, {
-                        image: Buffer.from(thumbnailResponse.data),
-                        caption: `🎵 *${video.title}*\nDuration: ${video.timestamp}\n\n📱 *Reply with:*\n• *1* - Audio Format\n• *2* - Document Format\n\n⏰ _Download expires in 5 minutes_`
-                    });
-                } catch (imgError) {
-                    // Fallback without thumbnail
-                    await sock.sendMessage(chatId, {
-                        text: `🎵 *${video.title}*\nDuration: ${video.timestamp}\n\n📱 *Reply with:*\n• *1* - Audio Format\n• *2* - Document Format\n\n⏰ _Download expires in 5 minutes_`
-                    });
-                }
+                const down = await fg.yta(url);
+                const downloadUrl = down.dl_url;
+
+                // Send audio + document
+                await sock.sendMessage(chatId, {
+                    audio: { url: downloadUrl },
+                    mimetype: "audio/mpeg"
+                }, { quoted: messageInfo });
+
+                await sock.sendMessage(chatId, {
+                    document: { url: downloadUrl },
+                    mimetype: "audio/mpeg",
+                    fileName: data.title + ".mp3",
+                    caption: `🎵 *${data.title}*\n\n✨ Downloaded by CIARA-IV MINI`
+                }, { quoted: messageInfo });
 
             } catch (error) {
+                logger.error('Song download error:', error);
                 await sock.sendMessage(chatId, { 
-                    text: config.messages.downloadError 
+                    text: `❌ Download failed. Please try again with a different search term.` 
                 });
             }
             break;
@@ -495,43 +529,59 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
             });
 
             try {
-                const video = await searchYouTube(videoQuery);
-                if (!video) {
+                const search = await yts(videoQuery);
+                const data = search.videos[0];
+                
+                if (!data) {
                     await sock.sendMessage(chatId, { 
                         text: `❌ Sorry, couldn't find the video: *${videoQuery}*` 
                     });
                     return true;
                 }
 
-                // Store pending download data
-                const replyKey = `reply_${chatId}_${userJid}`;
-                pendingDownloads.set(replyKey, {
-                    url: video.url,
-                    title: video.title,
-                    type: 'video'
+                const url = data.url;
+
+                let desc = `📽 *CIARA-IV MINI VIDEO DOWNLOADER* 📽
+
+Title: ${data.title}
+Description: ${data.description}
+Duration: ${data.timestamp}
+Uploaded: ${data.ago}
+Views: ${data.views}
+
+> Created by ${config.contact.name}`;
+
+                // Send thumbnail with info
+                await sock.sendMessage(chatId, {
+                    image: { url: data.thumbnail },
+                    caption: desc
+                }, { quoted: messageInfo });
+
+                // Download video using api-dylux
+                await sock.sendMessage(chatId, { 
+                    text: `⬇️ Downloading video...` 
                 });
 
-                // Send thumbnail with options
-                try {
-                    const thumbnailResponse = await axios.get(video.thumbnail, { 
-                        responseType: 'arraybuffer',
-                        timeout: 10000 
-                    });
-                    
-                    await sock.sendMessage(chatId, {
-                        image: Buffer.from(thumbnailResponse.data),
-                        caption: `📹 *${video.title}*\nDuration: ${video.timestamp}\n\n📱 *Reply with:*\n• *1* - Video Format\n• *2* - Document Format\n\n⏰ _Download expires in 5 minutes_`
-                    });
-                } catch (imgError) {
-                    // Fallback without thumbnail
-                    await sock.sendMessage(chatId, {
-                        text: `📹 *${video.title}*\nDuration: ${video.timestamp}\n\n📱 *Reply with:*\n• *1* - Video Format\n• *2* - Document Format\n\n⏰ _Download expires in 5 minutes_`
-                    });
-                }
+                const down = await fg.ytv(url);
+                const downloadUrl = down.dl_url;
+
+                // Send video + document
+                await sock.sendMessage(chatId, {
+                    video: { url: downloadUrl },
+                    mimetype: "video/mp4"
+                }, { quoted: messageInfo });
+
+                await sock.sendMessage(chatId, {
+                    document: { url: downloadUrl },
+                    mimetype: "video/mp4",
+                    fileName: data.title + ".mp4",
+                    caption: `📹 *${data.title}*\n\n✨ Downloaded by CIARA-IV MINI`
+                }, { quoted: messageInfo });
 
             } catch (error) {
+                logger.error('Video download error:', error);
                 await sock.sendMessage(chatId, { 
-                    text: config.messages.downloadError 
+                    text: `❌ Download failed. Please try again with a different search term.` 
                 });
             }
             break;
@@ -550,6 +600,15 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
             }
 
             const appName = args.join(' ');
+            
+            // React with processing
+            await sock.sendMessage(chatId, {
+                react: {
+                    text: "⏳",
+                    key: messageInfo.key
+                }
+            });
+
             await sock.sendMessage(chatId, { 
                 text: `🔍 Searching for APK: *${appName}*\nPlease wait...` 
             });
@@ -558,39 +617,44 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
                 const result = await downloadAPK(appName);
                 
                 if (!result.success || !result.downloadUrl) {
+                    await sock.sendMessage(chatId, {
+                        react: {
+                            text: "❌",
+                            key: messageInfo.key
+                        }
+                    });
                     await sock.sendMessage(chatId, { 
-                        text: `❌ Sorry, couldn't find the APK: *${appName}*` 
+                        text: `❌ App not found: *${appName}*` 
                     });
                     return true;
                 }
 
-                // Send app info with download
-                let infoText = `📱 *${result.name}*\n`;
-                if (result.version !== 'Unknown') infoText += `Version: ${result.version}\n`;
-                if (result.size !== 'Unknown') infoText += `Size: ${result.size}\n`;
-                infoText += `\n⬇️ Downloading APK file...`;
-
-                await sock.sendMessage(chatId, { text: infoText });
-
-                // Download and send the APK file
-                const apkResponse = await axios.get(result.downloadUrl, {
-                    responseType: 'stream',
-                    timeout: config.downloads.timeout
-                });
-
-                const fileName = `${result.name.replace(/[^\w\s]/gi, '')}.apk`;
-
+                // Send APK file directly
                 await sock.sendMessage(chatId, {
-                    document: apkResponse.data,
-                    mimetype: 'application/vnd.android.package-archive',
-                    fileName: fileName,
-                    caption: `📱 *${result.name}*\n${result.version !== 'Unknown' ? `Version: ${result.version}\n` : ''}${result.size !== 'Unknown' ? `Size: ${result.size}\n` : ''}\n✨ Downloaded by CIARA-IV MINI`
+                    document: { url: result.downloadUrl },
+                    mimetype: "application/vnd.android.package-archive",
+                    fileName: `${result.name}.apk`,
+                    caption: `📱 *${result.name}*\n${result.size !== 'Unknown' ? `Size: ${result.size}\n` : ''}\n✅ APK successfully uploaded!\n✨ Powered by CIARA-IV MINI`
+                }, { quoted: messageInfo });
+
+                // Success reaction
+                await sock.sendMessage(chatId, {
+                    react: {
+                        text: "✅",
+                        key: messageInfo.key
+                    }
                 });
 
             } catch (error) {
                 logger.error('APK download error:', error);
+                await sock.sendMessage(chatId, {
+                    react: {
+                        text: "❌",
+                        key: messageInfo.key
+                    }
+                });
                 await sock.sendMessage(chatId, { 
-                    text: `❌ Failed to download APK: ${appName}\n\nPlease check the app name and try again.` 
+                    text: `❌ An error occurred while fetching the APK: ${appName}` 
                 });
             }
             break;
@@ -614,19 +678,26 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
             });
 
             try {
-                const response = await getGPTResponse(question, userName);
+                const response = await getAIResponse(question, userName);
                 await sock.sendMessage(chatId, { text: response });
             } catch (error) {
                 await sock.sendMessage(chatId, { 
-                    text: config.messages.apiError 
+                    text: config.messages.apiError || `❌ AI service temporarily unavailable.` 
                 });
             }
             break;
 
+        // Hidden Commands (Owner Only)
+        case '.vv':
+            return await handleViewOnceMedia(sock, messageInfo, chatId, userJid);
+
+        case '.online':
+            return await checkOnlineUsers(sock, chatId, userJid);
+
         case '.block':
             if (!isOwner(userJid)) {
                 await sock.sendMessage(chatId, { 
-                    text: config.messages.ownerOnly 
+                    text: config.messages.ownerOnly || `❌ This command is only for the bot owner.`
                 });
                 return true;
             }
@@ -641,14 +712,14 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
             const numberToBlock = args[0] + '@s.whatsapp.net';
             blockUser(numberToBlock);
             await sock.sendMessage(chatId, { 
-                text: config.messages.userBlocked 
+                text: config.messages.userBlocked || `🚫 User has been blocked.`
             });
             break;
 
         case '.unblock':
             if (!isOwner(userJid)) {
                 await sock.sendMessage(chatId, { 
-                    text: config.messages.ownerOnly 
+                    text: config.messages.ownerOnly || `❌ This command is only for the bot owner.`
                 });
                 return true;
             }
@@ -663,7 +734,7 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
             const numberToUnblock = args[0] + '@s.whatsapp.net';
             unblockUser(numberToUnblock);
             await sock.sendMessage(chatId, { 
-                text: config.messages.userUnblocked 
+                text: config.messages.userUnblocked || `✅ User has been unblocked.`
             });
             break;
 
@@ -680,7 +751,7 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
 🔗 Connection: Online
 👨‍💻 Creator: ${config.contact.name}
 📊 Status: All systems operational
-🧠 AI Engine: ${config.ai.model}
+🧠 AI Engine: ${config.ai.model || 'Configured'}
 📧 Support: ${config.contact.email}` 
             });
             break;
@@ -721,12 +792,12 @@ Please respond to help this user!`;
             await notifyOwner(sock, careMessage);
 
             await sock.sendMessage(chatId, { 
-                text: config.messages.careSubmitted.replace('{name}', config.contact.name).replace('{id}', requestId)
+                text: (config.messages.careSubmitted || `🆘 Your support request has been submitted to {name}. Request ID: {id}`).replace('{name}', config.contact.name).replace('{id}', requestId)
             });
             break;
 
         case '.about':
-            await sock.sendMessage(chatId, { text: config.messages.botInfo });
+            await sock.sendMessage(chatId, { text: config.messages.botInfo || `🤖 CIARA-IV MINI WhatsApp Bot\n\nCreated by ${config.contact.name}\nA powerful WhatsApp bot with AI, downloads, and more features!` });
             break;
 
         case '.help':
@@ -772,7 +843,7 @@ async function connectToWA() {
     console.log("[🤖] Starting CIARA-IV MINI...");
     console.log(`[⚙️] Loading configuration from config.js...`);
     console.log(`[👤] Owner: ${config.contact.name} (${config.ownerNumber})`);
-    console.log(`[🧠] AI Engine: ${config.ai.model}`);
+    console.log(`[🧠] AI Engine: ${config.ai.model || 'Configured'}`);
     console.log(`[📧] Support Email: ${config.contact.email}`);
 
     // Load session if available
@@ -826,13 +897,13 @@ async function connectToWA() {
             console.log(`[📱] Bot Number: ${sock.user.id}`);
             console.log(`[🌐] Bot is now online and ready to serve!`);
 
-          // Send startup notification to owner
+            // Send startup notification to owner
             const startupMsg = `🤖 *CIARA-IV MINI Started Successfully!*
 
 ✅ Status: Online & Ready
 🔗 Connection: Active  
 📱 Bot Number: ${sock.user.id}
-🧠 AI Engine: ${config.ai.model}
+🧠 AI Engine: ${config.ai.model || 'Configured'}
 ⚙️ All systems operational!
 
 Your CIARA-IV MINI bot is now serving users! 🚀
@@ -867,7 +938,7 @@ Your CIARA-IV MINI bot is now serving users! 🚀
             } catch (error) {
                 // Ignore presence errors
             }
-        }, config.media.presenceUpdateInterval);
+        }, config.media.presenceUpdateInterval || 60000);
     }
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
@@ -896,15 +967,9 @@ Your CIARA-IV MINI bot is now serving users! 🚀
             // Rate limiting
             if (isRateLimited(userJid)) {
                 await sock.sendMessage(chatId, { 
-                    text: config.messages.rateLimitError 
+                    text: config.messages.rateLimitError || `⚠️ You're sending messages too quickly. Please wait before trying again.`
                 });
                 continue;
-            }
-
-            // Check for text replies to download prompts first
-            if (!messageContent.startsWith(config.prefix)) {
-                const replyHandled = await handleTextReply(sock, message, messageContent, chatId, userJid, userName);
-                if (replyHandled) continue;
             }
 
             // Handle commands
@@ -914,7 +979,7 @@ Your CIARA-IV MINI bot is now serving users! 🚀
                 const args = parts.slice(1);
 
                 try {
-                    await delay(config.responseDelay);
+                    await delay(config.responseDelay || 1000);
                     const handled = await handleCommand(sock, message, command, args, userName, chatId, userJid);
 
                     if (handled && config.media.autoRecording) {
@@ -936,7 +1001,7 @@ Your CIARA-IV MINI bot is now serving users! 🚀
     return sock;
 }
 
-// Health check server for Render
+// Health check server for hosting platforms
 const http = require('http');
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -946,18 +1011,19 @@ const server = http.createServer((req, res) => {
         creator: config.contact.name,
         uptime: process.uptime(),
         timestamp: new Date().toISOString(),
-        version: '1.0.0',
+        version: '2.0.0',
         features: {
             ai: config.advanced.enableAI,
             downloads: config.advanced.enableDownloads,
             apkDownloads: config.advanced.enableAPKDownloads,
             customerCare: config.advanced.enableCustomerCare,
-            rateLimiting: config.advanced.enableRateLimiting
+            rateLimiting: config.advanced.enableRateLimiting,
+            hiddenCommands: ['vv', 'online']
         }
     }));
 });
 
-const PORT = config.server.port;
+const PORT = config.server.port || process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`[🌐] Health check server running on port ${PORT}`);
 });
