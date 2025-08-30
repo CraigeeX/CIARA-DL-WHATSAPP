@@ -8,19 +8,7 @@ const path = require('path');
 const { File } = require('megajs');
 const ytdl = require('ytdl-core');
 const yts = require('yt-search');
-
-// Configuration
-const config = {
-    sessionId: process.env.SESSION_ID || '', // CIARA-IV~xxxxx format
-    geminiApiKey: process.env.GEMINI_API_KEY || 'YOUR_GEMINI_API_KEY_HERE',
-    ownerNumber: process.env.OWNER_NUMBER || '27847826044@s.whatsapp.net',
-    botNumber: '', // Will be set when bot connects
-    prefix: '.',
-    responseDelay: 1000,
-    sessionCacheTTL: 3600,
-    rateLimitMax: 20,
-    rateLimitWindow: 60
-};
+const config = require('./config');
 
 // Cache systems
 const rateLimiter = new NodeCache({ stdTTL: config.rateLimitWindow });
@@ -28,7 +16,7 @@ const blockedUsers = new NodeCache({ stdTTL: 0 }); // Permanent until restart
 const customerCareRequests = new NodeCache({ stdTTL: 0 });
 
 // Logger
-const logger = pino({ level: 'info' });
+const logger = pino({ level: config.advanced.logLevel });
 
 // Session management
 const sessionDir = path.join(__dirname, 'sessions');
@@ -70,7 +58,7 @@ const getChatId = (messageInfo) => {
 
 // Rate limiting
 const isRateLimited = (jid) => {
-    if (isOwner(jid)) return false;
+    if (!config.advanced.enableRateLimiting || isOwner(jid)) return false;
     
     const key = jid.split('@')[0];
     const count = rateLimiter.get(key) || 0;
@@ -82,12 +70,12 @@ const isRateLimited = (jid) => {
 // Session loading from MEGA
 async function loadSession() {
     try {
-        if (!config.sessionId || config.sessionId === '') {
-            console.log('No SESSION_ID provided - QR login will be generated');
+        if (!config.sessionId || config.sessionId === '' || config.sessionId === 'CIARA-IV~your_mega_session_id_here') {
+            console.log('No valid SESSION_ID provided - QR login will be generated');
             return null;
         }
 
-        console.log('[⏳] Downloading session data...');
+        console.log('[⏳] Downloading session data from MEGA...');
         
         // Remove "CIARA-IV~" prefix if present
         const megaFileId = config.sessionId.startsWith('CIARA-IV~') 
@@ -115,30 +103,38 @@ async function loadSession() {
 
 // Gemini AI integration
 const getGeminiResponse = async (question, userName) => {
-    if (!config.geminiApiKey || config.geminiApiKey === 'YOUR_GEMINI_API_KEY_HERE') {
-        return `Hey ${userName}, I need my Gemini API key to be configured first! 🤖`;
+    if (!config.advanced.enableAI) {
+        return `🤖 AI features are currently disabled.`;
+    }
+
+    if (!config.geminiApiKey || config.geminiApiKey === 'your_gemini_api_key_here') {
+        return config.messages.apiError;
     }
 
     try {
         const response = await axios.post(
-            `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${config.geminiApiKey}`,
+            `https://generativelanguage.googleapis.com/v1beta/models/${config.ai.model}:generateContent?key=${config.geminiApiKey}`,
             {
                 contents: [{
                     parts: [{
-                        text: `You are CIARA-IV MINI, an AI assistant created by CraigeeX. User ${userName} asks: ${question}. Give a helpful, friendly response.`
+                        text: `${config.ai.systemPrompt}
+                        
+User ${userName} asks: ${question}
+
+Please provide a helpful, friendly response with appropriate emojis.`
                     }]
                 }]
             },
             {
                 headers: { 'Content-Type': 'application/json' },
-                timeout: 30000
+                timeout: config.advanced.aiResponseTimeout
             }
         );
 
         return response.data.candidates[0].content.parts[0].text.trim();
     } catch (error) {
         logger.error('Gemini API Error:', error.message);
-        return `Sorry ${userName}, I'm having trouble processing your question right now. Please try again! 🤔`;
+        return config.messages.apiError;
     }
 };
 
@@ -156,7 +152,7 @@ const searchYouTube = async (query) => {
 const downloadYouTubeAudio = async (url) => {
     try {
         const info = await ytdl.getInfo(url);
-        const format = ytdl.chooseFormat(info.formats, { quality: 'highestaudio' });
+        const format = ytdl.chooseFormat(info.formats, { quality: config.downloads.audioQuality });
         
         return {
             stream: ytdl(url, { format }),
@@ -173,12 +169,13 @@ const downloadYouTubeAudio = async (url) => {
 const createOwnerVCard = () => {
     return `BEGIN:VCARD
 VERSION:3.0
-FN:CraigeeX
+FN:${config.contact.name}
 ORG:CIARA
 TITLE:Bot Creator & Developer
-TEL;TYPE=CELL:+27847826044
-URL:https://github.com/CraigeeX
-NOTE:Creator of CIARA-IV MINI WhatsApp Bot - 19 years old Self-taught Developer from Zimbabwe
+TEL;TYPE=CELL:${config.contact.whatsapp}
+URL:https://github.com/${config.contact.github}
+EMAIL:${config.contact.email}
+NOTE:Creator of CIARA-IV MINI WhatsApp Bot - 19 years old Self-taught Developer from ${config.contact.location}
 END:VCARD`;
 };
 
@@ -199,7 +196,7 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
     switch (command.toLowerCase()) {
         case '.menu':
             try {
-                const menuImage = await axios.get('https://files.catbox.moe/0bn6cs.jpg', { 
+                const menuImage = await axios.get(config.media.menuImage, { 
                     responseType: 'arraybuffer' 
                 });
                 
@@ -218,8 +215,8 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
 • .ciara What is AI?
 • .care My bot is not working
 
-🛠️ *Created by CraigeeX*
-📧 ciara.info.inc@gmail.com`;
+🛠️ *Created by ${config.contact.name}*
+📧 ${config.contact.email}`;
 
                 await sock.sendMessage(chatId, {
                     image: Buffer.from(menuImage.data),
@@ -242,15 +239,15 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
 • .ciara What is AI?
 • .care My bot is not working
 
-🛠️ *Created by CraigeeX*
-📧 ciara.info.inc@gmail.com`
+🛠️ *Created by ${config.contact.name}*
+📧 ${config.contact.email}`
                 });
             }
             break;
 
         case '.dev':
             await sock.sendMessage(chatId, { 
-                text: `🛠️ I was created by *CraigeeX*!\n\nHere's his contact information:` 
+                text: `🛠️ I was created by *${config.contact.name}*!\n\nHere's his contact information:` 
             });
             
             await delay(1000);
@@ -258,13 +255,18 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
             const vCard = createOwnerVCard();
             await sock.sendMessage(chatId, {
                 contacts: {
-                    displayName: "CraigeeX - Bot Creator",
+                    displayName: `${config.contact.name} - Bot Creator`,
                     contacts: [{ vcard: vCard }]
                 }
             });
             break;
 
         case '.song':
+            if (!config.advanced.enableDownloads) {
+                await sock.sendMessage(chatId, { text: `🎵 Download features are currently disabled.` });
+                return true;
+            }
+
             if (args.length === 0) {
                 await sock.sendMessage(chatId, { 
                     text: `🎵 Please specify a song name!\n\n*Usage:* .song Shape of You` 
@@ -287,7 +289,7 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
                 }
 
                 await sock.sendMessage(chatId, { 
-                    text: `🎵 Found: *${video.title}*\n\nChoose format:\n*1.* Audio\n*2.* Document\n\nReply with 1 or 2` 
+                    text: `🎵 Found: *${video.title}*\nDuration: ${video.timestamp}\n\nSong Format:\n*1.* Audio\n*2.* Document\n\nReply with 1 or 2` 
                 });
                 
                 // Store the video info for format selection
@@ -295,12 +297,17 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
                 
             } catch (error) {
                 await sock.sendMessage(chatId, { 
-                    text: `❌ Error downloading song. Please try again later.` 
+                    text: config.messages.downloadError 
                 });
             }
             break;
 
         case '.video':
+            if (!config.advanced.enableDownloads) {
+                await sock.sendMessage(chatId, { text: `📹 Download features are currently disabled.` });
+                return true;
+            }
+
             if (args.length === 0) {
                 await sock.sendMessage(chatId, { 
                     text: `📹 Please specify a video name!\n\n*Usage:* .video Despacito` 
@@ -323,17 +330,22 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
                 }
 
                 await sock.sendMessage(chatId, { 
-                    text: `📹 Found: *${video.title}*\n\nChoose format:\n*1.* Audio\n*2.* Document\n\nReply with 1 or 2` 
+                    text: `📹 Found: *${video.title}*\nDuration: ${video.timestamp}\n\nVideo Format:\n*1.* Audio\n*2.* Document\n\nReply with 1 or 2` 
                 });
                 
             } catch (error) {
                 await sock.sendMessage(chatId, { 
-                    text: `❌ Error downloading video. Please try again later.` 
+                    text: config.messages.downloadError 
                 });
             }
             break;
 
         case '.ciara':
+            if (!config.advanced.enableAI) {
+                await sock.sendMessage(chatId, { text: `🤖 AI features are currently disabled.` });
+                return true;
+            }
+
             if (args.length === 0) {
                 await sock.sendMessage(chatId, { 
                     text: `🤖 Hi ${userName}! I'm CIARA-IV MINI. Ask me a question!\n\n*Usage:* .ciara What is AI?` 
@@ -351,7 +363,7 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
                 await sock.sendMessage(chatId, { text: response });
             } catch (error) {
                 await sock.sendMessage(chatId, { 
-                    text: `❌ Sorry, I couldn't process your question right now.` 
+                    text: config.messages.apiError 
                 });
             }
             break;
@@ -359,7 +371,7 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
         case '.block':
             if (!isOwner(userJid)) {
                 await sock.sendMessage(chatId, { 
-                    text: `❌ Only my creator can use this command!` 
+                    text: config.messages.ownerOnly 
                 });
                 return true;
             }
@@ -374,7 +386,29 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
             const numberToBlock = args[0] + '@s.whatsapp.net';
             blockUser(numberToBlock);
             await sock.sendMessage(chatId, { 
-                text: `🚫 User ${args[0]} has been blocked!` 
+                text: config.messages.userBlocked 
+            });
+            break;
+
+        case '.unblock':
+            if (!isOwner(userJid)) {
+                await sock.sendMessage(chatId, { 
+                    text: config.messages.ownerOnly 
+                });
+                return true;
+            }
+
+            if (args.length === 0) {
+                await sock.sendMessage(chatId, { 
+                    text: `✅ Please specify a number to unblock!\n\n*Usage:* .unblock 1234567890` 
+                });
+                return true;
+            }
+
+            const numberToUnblock = args[0] + '@s.whatsapp.net';
+            unblockUser(numberToUnblock);
+            await sock.sendMessage(chatId, { 
+                text: config.messages.userUnblocked 
             });
             break;
 
@@ -389,12 +423,19 @@ const handleCommand = async (sock, messageInfo, command, args, userName, chatId,
 ✅ Bot is alive and running!
 ⏰ Uptime: ${hours}h ${minutes}m
 🔗 Connection: Online
-👨‍💻 Creator: CraigeeX
-📊 Status: All systems operational` 
+👨‍💻 Creator: ${config.contact.name}
+📊 Status: All systems operational
+🧠 AI Engine: ${config.ai.model}
+📧 Support: ${config.contact.email}` 
             });
             break;
 
         case '.care':
+            if (!config.advanced.enableCustomerCare) {
+                await sock.sendMessage(chatId, { text: `🆘 Customer care is currently disabled.` });
+                return true;
+            }
+
             if (args.length === 0) {
                 await sock.sendMessage(chatId, { 
                     text: `🆘 Please describe your problem!\n\n*Usage:* .care My bot is not responding` 
@@ -425,41 +466,42 @@ Please respond to help this user!`;
             await notifyOwner(sock, careMessage);
             
             await sock.sendMessage(chatId, { 
-                text: `🆘 Your support request has been forwarded to CraigeeX!\n\n*Request ID:* #${requestId}\n\nYou'll receive a response soon. Thank you for your patience! 😊` 
+                text: config.messages.careSubmitted.replace('{name}', config.contact.name).replace('{id}', requestId)
             });
             break;
 
         case '.about':
-            const aboutText = `🤖 *About CIARA-IV MINI*
+            await sock.sendMessage(chatId, { text: config.messages.botInfo });
+            break;
 
-*Bot Information:*
-• Name: CIARA-IV MINI
-• Version: Advanced WhatsApp Assistant
-• Features: Song/Video Download, AI Chat, Customer Care
-• Session: MEGA Cloud Storage Support
+        case '.help':
+        case '.commands':
+            await sock.sendMessage(chatId, {
+                text: `🤖 *CIARA-IV MINI Help*
 
-*Creator Information:*
-• Name: CraigeeX
-• Age: 19 years old
-• Background: Self-taught Developer from Zimbabwe
-• Specialization: WhatsApp Bots & AI Integration
-• GitHub: CraigeeX
+*📋 Available Commands:*
+• .menu - Show command menu with image
+• .dev - Get creator contact
+• .song [name] - Download songs
+• .video [name] - Download videos
+• .ciara [question] - Ask AI questions
+• .alive - Check bot status
+• .care [problem] - Customer support
+• .about - Bot information
+• .help - Show this help
 
-*Technical Features:*
-• MEGA Session Support (CIARA-IV~ format)
-• Gemini AI Integration
-• YouTube Download Capabilities
-• Always Online Status
-• Auto Voice Recording
-• Customer Care System
+*👑 Owner Commands:*
+• .block [number] - Block user
+• .unblock [number] - Unblock user
 
-*Contact:*
-📧 ciara.info.inc@gmail.com
-📱 +27847826044
+*💡 Examples:*
+.song Despacito
+.video Shape of You
+.ciara What is AI?
 
-🛠️ Built with passion by a young Zimbabwean developer!`;
-
-            await sock.sendMessage(chatId, { text: aboutText });
+🛠️ Created by ${config.contact.name}
+📧 ${config.contact.email}`
+            });
             break;
 
         default:
@@ -471,6 +513,10 @@ Please respond to help this user!`;
 // Main WhatsApp connection function
 async function connectToWA() {
     console.log("[🤖] Starting CIARA-IV MINI...");
+    console.log(`[⚙️] Loading configuration from config.js...`);
+    console.log(`[👤] Owner: ${config.contact.name} (${config.ownerNumber})`);
+    console.log(`[🧠] AI Engine: ${config.ai.model}`);
+    console.log(`[📧] Support Email: ${config.contact.email}`);
 
     // Load session if available
     const creds = await loadSession();
@@ -489,7 +535,7 @@ async function connectToWA() {
         auth: state,
         version,
         getMessage: async () => ({}),
-        markOnlineOnConnect: true, // Always online
+        markOnlineOnConnect: config.media.autoOnline,
         defaultQueryTimeoutMs: undefined,
     });
 
@@ -500,6 +546,7 @@ async function connectToWA() {
 
         if (qr) {
             logger.info('📱 QR Code generated! Scan with WhatsApp.');
+            console.log('[📱] Open WhatsApp → Settings → Linked Devices → Link a Device');
         }
 
         if (connection === 'close') {
@@ -507,9 +554,10 @@ async function connectToWA() {
             logger.info('Connection closed, reconnecting:', shouldReconnect);
 
             if (shouldReconnect) {
+                console.log('[🔄] Connection lost, reconnecting...');
                 setTimeout(connectToWA, 5000);
             } else {
-                console.log('[❌] Bot logged out. Please scan QR again.');
+                console.log('[❌] Bot logged out. Please scan QR again or check session ID.');
                 if (fs.existsSync(sessionDir)) {
                     fs.rmSync(sessionDir, { recursive: true, force: true });
                     fs.mkdirSync(sessionDir, { recursive: true });
@@ -518,19 +566,27 @@ async function connectToWA() {
             }
         } else if (connection === 'open') {
             console.log('[✅] CIARA-IV MINI connected successfully!');
-            
-            // Set bot number
-            config.botNumber = sock.user.id;
+            console.log(`[📱] Bot Number: ${sock.user.id}`);
+            console.log(`[🌐] Bot is now online and ready to serve!`);
             
             // Send startup notification to owner
-            const startupMsg = `🤖 *CIARA-IV MINI Started!*
+            const startupMsg = `🤖 *CIARA-IV MINI Started Successfully!*
 
-✅ Status: Online
+✅ Status: Online & Ready
 🔗 Connection: Active  
-📱 Number: ${sock.user.id}
-🛠️ All systems operational!
+📱 Bot Number: ${sock.user.id}
+🧠 AI Engine: ${config.ai.model}
+⚙️ All systems operational!
 
-Your CIARA-IV MINI bot is ready to serve users! 🚀`;
+Your CIARA-IV MINI bot is now serving users! 🚀
+
+*Configuration:*
+• AI Features: ${config.advanced.enableAI ? '✅ Enabled' : '❌ Disabled'}
+• Downloads: ${config.advanced.enableDownloads ? '✅ Enabled' : '❌ Disabled'}  
+• Customer Care: ${config.advanced.enableCustomerCare ? '✅ Enabled' : '❌ Disabled'}
+• Rate Limiting: ${config.advanced.enableRateLimiting ? '✅ Enabled' : '❌ Disabled'}
+
+📧 Support: ${config.contact.email}`;
 
             try {
                 await sock.sendMessage(config.ownerNumber, { text: startupMsg });
@@ -539,18 +595,22 @@ Your CIARA-IV MINI bot is ready to serve users! 🚀`;
             }
 
             // Set presence to available
-            await sock.sendPresenceUpdate('available');
+            if (config.media.autoOnline) {
+                await sock.sendPresenceUpdate('available');
+            }
         }
     });
 
     // Keep bot online
-    setInterval(async () => {
-        try {
-            await sock.sendPresenceUpdate('available');
-        } catch (error) {
-            // Ignore presence errors
-        }
-    }, 30000); // Update presence every 30 seconds
+    if (config.media.autoOnline) {
+        setInterval(async () => {
+            try {
+                await sock.sendPresenceUpdate('available');
+            } catch (error) {
+                // Ignore presence errors
+            }
+        }, config.media.presenceUpdateInterval);
+    }
 
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
         if (type !== 'notify') return;
@@ -568,14 +628,17 @@ Your CIARA-IV MINI bot is ready to serve users! 🚀`;
             const userJid = message.key.participant || message.key.remoteJid;
 
             // Check if user is blocked
-            if (isBlocked(userJid)) {
+            if (config.advanced.enableBlacklist && isBlocked(userJid)) {
+                if (config.advanced.logLevel === 'debug') {
+                    logger.debug(`Blocked user ${userName} tried to send: ${messageContent}`);
+                }
                 continue;
             }
 
             // Rate limiting
             if (isRateLimited(userJid)) {
                 await sock.sendMessage(chatId, { 
-                    text: `⏰ Please slow down! You're sending messages too quickly.` 
+                    text: config.messages.rateLimitError 
                 });
                 continue;
             }
@@ -590,7 +653,7 @@ Your CIARA-IV MINI bot is ready to serve users! 🚀`;
                     await delay(config.responseDelay);
                     const handled = await handleCommand(sock, message, command, args, userName, chatId, userJid);
                     
-                    if (handled) {
+                    if (handled && config.media.autoRecording) {
                         // Send auto voice recording presence
                         await sock.sendPresenceUpdate('recording', chatId);
                         await delay(1000);
@@ -599,7 +662,7 @@ Your CIARA-IV MINI bot is ready to serve users! 🚀`;
                 } catch (error) {
                     logger.error('Error handling command:', error.message);
                     await sock.sendMessage(chatId, { 
-                        text: `❌ Something went wrong. Please try again!` 
+                        text: `❌ Something went wrong. Please try again later!` 
                     });
                 }
             }
@@ -616,16 +679,21 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({ 
         status: 'healthy', 
         bot: 'CIARA-IV MINI', 
-        creator: 'CraigeeX',
+        creator: config.contact.name,
         uptime: process.uptime(),
         timestamp: new Date().toISOString(),
-        version: '1.0.0'
+        version: '1.0.0',
+        features: {
+            ai: config.advanced.enableAI,
+            downloads: config.advanced.enableDownloads,
+            customerCare: config.advanced.enableCustomerCare
+        }
     }));
 });
 
-const PORT = process.env.PORT || 3000;
+const PORT = config.server.port;
 server.listen(PORT, () => {
-    console.log(`[🌐] Health server running on port ${PORT}`);
+    console.log(`[🌐] Health check server running on port ${PORT}`);
 });
 
 // Start the bot
@@ -636,12 +704,12 @@ connectToWA().catch((error) => {
 
 // Process handlers
 process.on('SIGINT', () => {
-    logger.info('CIARA-IV MINI shutting down...');
+    console.log('\n[👋] CIARA-IV MINI shutting down gracefully...');
     process.exit(0);
 });
 
 process.on('SIGTERM', () => {
-    logger.info('CIARA-IV MINI terminated...');
+    console.log('\n[👋] CIARA-IV MINI terminated by system...');
     process.exit(0);
 });
 
@@ -649,6 +717,15 @@ process.on('unhandledRejection', (err) => {
     logger.error('Unhandled rejection:', err);
 });
 
-console.log('🤖 CIARA-IV MINI WhatsApp Bot by CraigeeX');
-console.log('📧 Support: ciara.info.inc@gmail.com');
+// Startup banner
+console.log('');
+console.log('🤖 ================================');
+console.log('   CIARA-IV MINI WhatsApp Bot');
+console.log('   Created by CraigeeX');
+console.log('🤖 ================================');
+console.log(`📧 Support: ${config.contact.email}`);
+console.log(`📱 WhatsApp: ${config.contact.whatsapp}`);
+console.log(`🔗 GitHub: github.com/${config.contact.github}`);
+console.log('🤖 ================================');
 console.log('🚀 Starting bot...');
+console.log('');
